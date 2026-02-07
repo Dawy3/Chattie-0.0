@@ -172,8 +172,8 @@ class RetrievalEvaluator:
         qdrant_api_key: Optional[str] = None,
     ):
         self.corpus_collection = corpus_collection
-        self.qdrant_url = qdrant_url or settings.database.qdrant_url
-        self.qdrant_api_key = qdrant_api_key or settings.database.qdrant_api_key
+        self.qdrant_url = qdrant_url or settings.qdrant.qdrant_url
+        self.qdrant_api_key = qdrant_api_key or settings.qdrant.qdrant_api_key
 
         self.embedding_generator: Optional[EmbeddingGenerator] = None
         self.vector_search: Optional[VectorSearch] = None

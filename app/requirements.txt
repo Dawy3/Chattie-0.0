@@ -55,3 +55,10 @@ sqlalchemy[asyncio]==2.0.29
 redis==5.0.3
 psycopg2-binary==2.9.9
 asyncpg==0.29.0
+
+# =========================
+# Monitoring / Tracing / Eval
+# =========================
+ragas>=0.1.7
+datasets==4.5.0
+prometheus-client==0.20.0
