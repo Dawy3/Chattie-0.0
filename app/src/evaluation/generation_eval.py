@@ -9,7 +9,7 @@ TARGET: Faithfulness > 0.85, Answer Relevancy > 0.80
 import json
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -17,8 +17,6 @@ from dotenv import load_dotenv
 load_dotenv()  # Load .env file
 
 import warnings
-
-# Suppress ragas deprecation warnings (metrics will be moved in v1.0)
 warnings.filterwarnings("ignore", message=".*Importing.*from 'ragas.metrics'.*deprecated.*")
 
 from ragas import evaluate
@@ -29,149 +27,49 @@ from ragas.metrics import (
     context_recall,
 )
 from datasets import Dataset
-
-from backend.core.config import settings
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 logger = logging.getLogger(__name__)
 
-# Conditional imports for optional dependencies
-try:
-    from langchain_openai import ChatOpenAI
-    HAS_LANGCHAIN_OPENAI = True
-except ImportError:
-    HAS_LANGCHAIN_OPENAI = False
-    logger.warning("langchain-openai not installed")
 
-try:
-    from langchain_huggingface import HuggingFacePipeline, HuggingFaceEmbeddings
-    HAS_LANGCHAIN_HF = True
-except ImportError:
-    HAS_LANGCHAIN_HF = False
-    logger.debug("langchain-huggingface not installed (optional)")
-
-try:
-    from transformers import pipeline as hf_pipeline
-    HAS_TRANSFORMERS = True
-except ImportError:
-    HAS_TRANSFORMERS = False
-
-
-def get_ragas_llm():
+def get_ragas_llm(model: str = "gpt-4o-mini") -> ChatOpenAI:
     """
-    Get LLM for Ragas evaluation based on config settings.
+    Get OpenAI LLM for Ragas evaluation.
 
-    Uses LLM__PROVIDER and LLM__MODEL from config:
-    - openrouter: Uses OPENROUTER_API_KEY, model format "provider/model"
-    - openai: Uses OPENAI_API_KEY, model format "gpt-4o-mini"
-    - local: Uses LOCAL_LLM_URL, no API key needed
+    Requires OPENAI_API_KEY in .env
 
-    Fallback to HuggingFace local if no provider configured.
+    Args:
+        model: OpenAI model name (default: gpt-4o-mini)
 
-    .env example:
-        LLM__PROVIDER=openrouter
-        LLM__MODEL=openai/gpt-4o-mini
-        OPENROUTER_API_KEY=sk-or-xxx
+    Returns:
+        ChatOpenAI instance
     """
-    if not HAS_LANGCHAIN_OPENAI:
-        logger.error("langchain-openai required. Run: pip install langchain-openai")
-        return None
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY not set in .env")
 
-    provider = settings.llm.provider
-    model = settings.llm.model
-    api_key = settings.llm.api_key
-    base_url = settings.llm.base_url
-
-    # Use configured provider
-    if provider in ("openrouter", "openai") and api_key:
-        try:
-            logger.info(f"Using {provider} LLM: {model}")
-            return ChatOpenAI(
-                model=model,
-                api_key=api_key,
-                base_url=base_url if provider == "openrouter" else None,
-            )
-        except Exception as e:
-            logger.warning(f"{provider} LLM setup failed: {e}")
-
-    # Local provider (OpenAI-compatible API)
-    if provider == "local":
-        try:
-            logger.info(f"Using local LLM: {model} at {base_url}")
-            return ChatOpenAI(
-                model=model,
-                api_key="not-needed",  # Local servers often don't need API key
-                base_url=base_url,
-            )
-        except Exception as e:
-            logger.warning(f"Local LLM setup failed: {e}")
-
-    # Fallback to HuggingFace local models (completely free, runs locally)
-    if HAS_LANGCHAIN_HF and HAS_TRANSFORMERS:
-        try:
-            model_name = os.getenv("RAGAS_LLM_MODEL", "google/flan-t5-small")
-            logger.info(f"Using HuggingFace local LLM: {model_name}")
-            pipe = hf_pipeline("text2text-generation", model=model_name, max_length=512)
-            return HuggingFacePipeline(pipeline=pipe)
-        except Exception as e:
-            logger.warning(f"HuggingFace LLM setup failed: {e}")
-
-    logger.error(
-        "No LLM available. Configure in .env:\n"
-        "  LLM__PROVIDER=openrouter\n"
-        "  LLM__MODEL=openai/gpt-4o-mini\n"
-        "  OPENROUTER_API_KEY=sk-or-xxx"
-    )
-    return None
+    logger.info(f"Using OpenAI LLM: {model}")
+    return ChatOpenAI(model=model, api_key=api_key)
 
 
-def get_ragas_embeddings():
+def get_ragas_embeddings(model: str = "text-embedding-3-small") -> OpenAIEmbeddings:
     """
-    Get embeddings for Ragas evaluation based on config settings.
+    Get OpenAI embeddings for Ragas evaluation.
 
-    Uses EMBEDDING__MODEL_PROVIDER from config:
-    - huggingface/local: Free, runs locally
-    - openai: Uses OPENAI_API_KEY
+    Requires OPENAI_API_KEY in .env
 
-    .env example:
-        EMBEDDING__MODEL_PROVIDER=huggingface
-        EMBEDDING__MODEL_NAME=e5-large-v2
+    Args:
+        model: OpenAI embedding model (default: text-embedding-3-small)
+
+    Returns:
+        OpenAIEmbeddings instance
     """
-    provider = settings.embedding.model_provider.lower()
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY not set in .env")
 
-    # For HuggingFace/free models (recommended for evaluation)
-    if provider in ("huggingface", "local") and HAS_LANGCHAIN_HF:
-        try:
-            logger.info(f"Using HuggingFace embeddings: {settings.embedding.model_name}")
-            return HuggingFaceEmbeddings(
-                model_name=settings.embedding.model_name,
-            )
-        except Exception as e:
-            logger.warning(f"HuggingFace embeddings setup failed: {e}")
-
-    # For OpenAI embeddings
-    openai_key = settings.llm.openai_api_key or os.getenv("OPENAI_API_KEY")
-    if provider == "openai" and openai_key and HAS_LANGCHAIN_OPENAI:
-        try:
-            from langchain_openai import OpenAIEmbeddings
-            logger.info(f"Using OpenAI embeddings: {settings.embedding.model_name}")
-            return OpenAIEmbeddings(
-                model=settings.embedding.model_name,
-                api_key=openai_key,
-            )
-        except Exception as e:
-            logger.warning(f"OpenAI embeddings setup failed: {e}")
-
-    # Fallback: try HuggingFace anyway
-    if HAS_LANGCHAIN_HF:
-        try:
-            fallback_model = "sentence-transformers/all-MiniLM-L6-v2"
-            logger.info(f"Using fallback HuggingFace embeddings: {fallback_model}")
-            return HuggingFaceEmbeddings(model_name=fallback_model)
-        except Exception as e:
-            logger.warning(f"Fallback embeddings setup failed: {e}")
-
-    logger.warning("No embeddings available, Ragas will use defaults")
-    return None
+    logger.info(f"Using OpenAI embeddings: {model}")
+    return OpenAIEmbeddings(model=model, api_key=api_key)
 
 
 @dataclass
@@ -249,15 +147,14 @@ class GenerationDataset:
 
 
 class GenerationEvaluator:
-    """Evaluator for generation quality using Ragas."""
+    """Evaluator for generation quality using Ragas with OpenAI."""
 
-    def __init__(self, metrics: Optional[list] = None, use_config: bool = True):
+    def __init__(self, metrics: Optional[list] = None):
         """
         Initialize evaluator.
 
         Args:
             metrics: Ragas metrics to evaluate
-            use_config: If True, use config settings for LLM/embeddings
         """
         self.metrics = metrics or [
             faithfulness,
@@ -265,32 +162,27 @@ class GenerationEvaluator:
             context_precision,
             context_recall,
         ]
-        self.use_config = use_config
 
-    def evaluate(self, dataset: GenerationDataset, llm=None, embeddings=None) -> GenerationMetrics:
+    def evaluate(
+        self,
+        dataset: GenerationDataset,
+        llm_model: str = "gpt-4o-mini",
+        embedding_model: str = "text-embedding-3-small",
+    ) -> GenerationMetrics:
         """
-        Run Ragas evaluation.
+        Run Ragas evaluation using OpenAI.
 
-        If llm/embeddings not provided and use_config=True, will use config settings.
-        For free evaluation, set EMBEDDING__MODEL_PROVIDER=huggingface in .env
+        Args:
+            dataset: Evaluation dataset
+            llm_model: OpenAI LLM model name
+            embedding_model: OpenAI embedding model name
         """
         hf_dataset = dataset.to_hf_dataset()
 
-        # Use config-based LLM/embeddings if not provided
-        if self.use_config:
-            if llm is None:
-                llm = get_ragas_llm()
-            if embeddings is None:
-                embeddings = get_ragas_embeddings()
+        llm = get_ragas_llm(llm_model)
+        embeddings = get_ragas_embeddings(embedding_model)
 
-        # Run evaluation
-        kwargs = {}
-        if llm:
-            kwargs["llm"] = llm
-        if embeddings:
-            kwargs["embeddings"] = embeddings
-
-        result = evaluate(hf_dataset, metrics=self.metrics, **kwargs)
+        result = evaluate(hf_dataset, metrics=self.metrics, llm=llm, embeddings=embeddings)
 
         # Convert EvaluationResult to pandas DataFrame and get mean scores
         df = result.to_pandas()
@@ -307,10 +199,10 @@ class GenerationEvaluator:
         answers: list[str],
         contexts: list[list[str]],
         ground_truths: Optional[list[str]] = None,
-        llm=None,
-        embeddings=None,
+        llm_model: str = "gpt-4o-mini",
+        embedding_model: str = "text-embedding-3-small",
     ) -> GenerationMetrics:
-        """Evaluate from raw results."""
+        """Evaluate from raw results using OpenAI."""
         samples = [
             EvalSample(
                 question=q,
@@ -326,7 +218,7 @@ class GenerationEvaluator:
             )
         ]
         dataset = GenerationDataset(name="inline", samples=samples)
-        return self.evaluate(dataset, llm, embeddings)
+        return self.evaluate(dataset, llm_model, embedding_model)
 
 
 def create_synthetic_dataset(num_samples: int = 20) -> GenerationDataset:
@@ -345,14 +237,14 @@ def create_synthetic_dataset(num_samples: int = 20) -> GenerationDataset:
 
 def run_evaluation(
     dataset: GenerationDataset,
-    llm=None,
-    embeddings=None,
+    llm_model: str = "gpt-4o-mini",
+    embedding_model: str = "text-embedding-3-small",
     faithfulness_target: float = 0.85,
     relevancy_target: float = 0.80,
 ) -> tuple[GenerationMetrics, bool]:
-    """Run evaluation and check against targets."""
+    """Run evaluation with OpenAI and check against targets."""
     evaluator = GenerationEvaluator()
-    metrics = evaluator.evaluate(dataset, llm, embeddings)
+    metrics = evaluator.evaluate(dataset, llm_model, embedding_model)
 
     targets = metrics.check_targets(faithfulness_target, relevancy_target)
     passed = all(targets.values())
@@ -372,7 +264,7 @@ def _format_metric(value: float) -> str:
     """Format metric value, handling NaN."""
     import math
     if math.isnan(value):
-        return "N/A (model couldn't compute)"
+        return "N/A"
     return f"{value:.4f}"
 
 
@@ -384,22 +276,11 @@ def print_report(metrics: GenerationMetrics, dataset_name: str = "dataset") -> N
     print(f"GENERATION EVALUATION REPORT: {dataset_name}")
     print("=" * 60)
 
-    print("\n[Ragas Metrics]")
+    print("\n[OpenAI Ragas Metrics]")
     print(f"  Faithfulness:       {_format_metric(metrics.faithfulness)}")
     print(f"  Answer Relevancy:   {_format_metric(metrics.answer_relevancy)}")
     print(f"  Context Precision:  {_format_metric(metrics.context_precision)}")
     print(f"  Context Recall:     {_format_metric(metrics.context_recall)}")
-
-    # Check if any metrics are NaN
-    has_nan = any(math.isnan(v) for v in [
-        metrics.faithfulness, metrics.answer_relevancy,
-        metrics.context_precision, metrics.context_recall
-    ])
-    if has_nan:
-        print("\n[Warning] Some metrics returned N/A.")
-        print("  This typically happens with free/small LLMs that don't")
-        print("  follow RAGAS's required response format precisely.")
-        print("  For accurate results, use gpt-4o-mini or similar.")
 
     print("\n[Target Check]")
     for name, passed in metrics.check_targets().items():
