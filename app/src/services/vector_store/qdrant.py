@@ -8,7 +8,7 @@ Good for 10M-500M vectors.
 import logging
 import uuid
 from typing import Optional
-from app.src.core.config import settings
+from src.core.config import settings
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, HnswConfigDiff, PointStruct, VectorParams, PointIdsList, FilterSelector, Filter, FieldCondition, MatchValue
