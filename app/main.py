@@ -23,7 +23,7 @@ from src.core.generation.llm_client import create_llm_client
 from src.core.generation.context_builder import create_context_builder
 from src.core.generation.prompt_manager import PromptManager
 from src.core.query.classifier import create_classifier
-from src.core.query.transformer import create_transformer
+# from src.core.query.transformer import create_transformer
 from src.core.chunking.strategies import get_chunker
 from src.services.document_processor import DocumentProcessor
 from src.core.memory.conversation import ConversationMemory
@@ -103,8 +103,8 @@ async def lifespan(app: FastAPI):
     # --- Query Classifier ---
     query_classifier = create_classifier()
 
-    # --- Multi-Query Transformer ---
-    query_transformer = create_transformer(model=settings.llm.model)
+    # # --- Multi-Query Transformer ---
+    # query_transformer = create_transformer(model=settings.llm.model)
 
     # --- Chunker ---
     chunker = get_chunker()
@@ -128,7 +128,7 @@ async def lifespan(app: FastAPI):
     app.state.context_builder = context_builder
     app.state.prompt_manager = prompt_manager
     app.state.query_classifier = query_classifier
-    app.state.query_transformer = query_transformer
+    # app.state.query_transformer = query_transformer
     app.state.chunker = chunker
     app.state.document_processor = document_processor
     app.state.conversation_memory = conversation_memory
