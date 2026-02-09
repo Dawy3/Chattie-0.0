@@ -15,6 +15,7 @@ from src.core.generation.context_builder import ContextBuilder
 from src.core.generation.prompt_manager import PromptManager
 from src.core.query.classifier import QueryClassifier, QueryRoute
 from src.core.memory.conversation import ConversationMemory
+from src.core.caching.semantic_cache import SemanticCache
 
 from api.v1.schemas import (
     QueryRequest,
@@ -30,6 +31,7 @@ from api.v1.dependencies import (
     get_prompt_manager,
     get_query_classifier,
     get_conversation_memory,
+    get_semantic_cache,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,6 +54,7 @@ async def query(
     prompt_manager: PromptManager = Depends(get_prompt_manager),
     classifier: QueryClassifier = Depends(get_query_classifier),
     memory: ConversationMemory = Depends(get_conversation_memory),
+    semantic_cache: SemanticCache | None = Depends(get_semantic_cache),
 ):
     """Full RAG pipeline with SSE streaming.
 
@@ -90,6 +93,32 @@ async def query(
 
         return StreamingResponse(clarification_stream(), media_type="text/event-stream")
 
+    # ---- Semantic cache check (applies to GENERATION and RETRIEVAL) ----
+
+    if semantic_cache:
+        cache_result = await semantic_cache.get(request.query)
+        if cache_result.hit:
+            logger.info(
+                f"Cache hit ({cache_result.layer}, sim={cache_result.similarity:.3f}, "
+                f"latency={cache_result.latency_ms:.1f}ms): '{request.query[:50]}...'"
+            )
+
+            async def cached_stream():
+                yield _sse_event("metadata", {
+                    "route": route.value,
+                    "session_id": session_id,
+                    "sources": [],
+                    "cache": {"hit": True, "layer": cache_result.layer, "similarity": cache_result.similarity},
+                })
+                yield _sse_event("token", {"content": cache_result.response})
+                yield _sse_event("done", {
+                    "model": "cache",
+                    "usage": {},
+                    "latency_ms": (time.time() - start) * 1000,
+                })
+
+            return StreamingResponse(cached_stream(), media_type="text/event-stream")
+
     # ---- GENERATION route (LLM-only, no RAG) ----
 
     if route == QueryRoute.GENERATION:
@@ -111,6 +140,10 @@ async def query(
             full_answer = "".join(collected)
             memory.add(session_id, "user", request.query)
             memory.add(session_id, "assistant", full_answer)
+
+            # Cache the response
+            if semantic_cache:
+                await semantic_cache.set(request.query, full_answer)
 
             yield _sse_event("done", {
                 "model": llm_client.model,
@@ -193,6 +226,10 @@ async def query(
         full_answer = "".join(collected)
         memory.add(session_id, "user", request.query)
         memory.add(session_id, "assistant", full_answer)
+
+        # Cache the response
+        if semantic_cache:
+            await semantic_cache.set(request.query, full_answer)
 
         yield _sse_event("done", {
             "model": llm_client.model,
