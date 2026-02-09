@@ -17,6 +17,7 @@ from src.core.query.classifier import QueryClassifier
 from src.core.chunking.strategies import Chunker
 from src.services.document_processor import DocumentProcessor
 from src.core.memory.conversation import ConversationMemory
+from src.core.caching.semantic_cache import SemanticCache
 
 
 def get_qdrant_store(request: Request) -> QdrantStore:
@@ -65,6 +66,10 @@ def get_document_processor(request: Request) -> DocumentProcessor:
 
 def get_conversation_memory(request: Request) -> ConversationMemory:
     return request.app.state.conversation_memory
+
+
+def get_semantic_cache(request: Request) -> SemanticCache | None:
+    return request.app.state.semantic_cache
 
 
 def get_upload_dir(request: Request) -> str:
