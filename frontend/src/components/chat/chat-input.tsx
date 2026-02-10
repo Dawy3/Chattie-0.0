@@ -7,9 +7,11 @@ import { streamQuery } from '@/lib/api'
 
 interface ChatInputProps {
   conversationId: string
+  suggestion?: string
+  onSuggestionUsed?: () => void
 }
 
-export function ChatInput({ conversationId }: ChatInputProps) {
+export function ChatInput({ conversationId, suggestion, onSuggestionUsed }: ChatInputProps) {
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -23,10 +25,18 @@ export function ChatInput({ conversationId }: ChatInputProps) {
     }
   }, [input])
 
-  const handleSubmit = async () => {
-    if (!input.trim() || isStreaming) return
+  useEffect(() => {
+    if (suggestion) {
+      onSuggestionUsed?.()
+      handleSubmit(suggestion)
+    }
+  }, [suggestion])
 
-    const userMessage = input.trim()
+  const handleSubmit = async (directMessage?: string) => {
+    const messageToSend = directMessage || input.trim()
+    if (!messageToSend || isStreaming) return
+
+    const userMessage = messageToSend
     setInput('')
     setStreaming(true)
 
@@ -110,7 +120,7 @@ export function ChatInput({ conversationId }: ChatInputProps) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask a question about your documents..."
+            placeholder="اضف سؤالك هنا"
             disabled={isStreaming}
             rows={1}
             className="w-full resize-none rounded-xl border border-border bg-background px-4 py-3 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-foreground/20 disabled:opacity-50"
@@ -129,7 +139,7 @@ export function ChatInput({ conversationId }: ChatInputProps) {
         </div>
       </div>
       <p className="text-xs text-muted-foreground text-center mt-2">
-        Press Enter to send, Shift+Enter for new line · Chat expires after 24h
+        Chattie can make mistakes
       </p>
     </div>
   )

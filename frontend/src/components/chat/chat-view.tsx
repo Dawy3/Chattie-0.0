@@ -23,6 +23,7 @@ export function ChatView({ embedded = false }: ChatViewProps) {
 
   const currentConversation = getCurrentConversation()
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [suggestion, setSuggestion] = useState('')
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -102,24 +103,35 @@ export function ChatView({ embedded = false }: ChatViewProps) {
               embedded ? 'p-3' : 'p-4'
             )}>
               {currentConversation.messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center p-6">
-                  <div className={clsx(
-                    'rounded-full bg-muted flex items-center justify-center mb-3',
-                    embedded ? 'w-12 h-12' : 'w-16 h-16'
-                  )}>
-                    <MessageSquare className={clsx(
-                      'text-muted-foreground',
-                      embedded ? 'w-6 h-6' : 'w-8 h-8'
-                    )} />
-                  </div>
+                <div className="h-full flex flex-col items-center justify-center text-center p-6 -mt-16">
+                  <img
+                    src="/chat-icon.png"
+                    alt="Chat"
+                    className={clsx(
+                      'rounded-full mb-3 object-contain bg-white',
+                      embedded ? 'w-12 h-12' : 'w-16 h-16'
+                    )}
+                  />
                   <h2 className={clsx(
                     'font-semibold mb-1',
                     embedded ? 'text-base' : 'text-xl mb-2'
-                  )}>Start a conversation</h2>
-                  <p className="text-muted-foreground text-xs max-w-md">
-                    Ask questions about your documents. The AI will search through your
-                    knowledge base and provide relevant answers with sources.
-                  </p>
+                  )} dir="rtl">مرحبا, كيف يمكنني مساعدتك اليوم</h2>
+                  <div className="flex flex-wrap justify-center gap-2 mt-4">
+                    {[
+                      'ما هي المستندات التي لديك',
+                      'لخص لي آخر مستند',
+                      'ابحث عن موضوع معين',
+                    ].map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        onClick={() => setSuggestion(suggestion)}
+                        className="px-3 py-1.5 text-sm border border-border rounded-full hover:bg-accent transition-colors"
+                        dir="rtl"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 currentConversation.messages.map((message) => (
@@ -130,7 +142,7 @@ export function ChatView({ embedded = false }: ChatViewProps) {
             </div>
 
             {/* Input */}
-            <ChatInput conversationId={currentConversation.id} />
+            <ChatInput conversationId={currentConversation.id} suggestion={suggestion} onSuggestionUsed={() => setSuggestion('')} />
           </>
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-center p-8">

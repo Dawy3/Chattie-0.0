@@ -25,13 +25,13 @@ export function ChatMessage({ message }: ChatMessageProps) {
       <div
         className={clsx(
           'w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0',
-          isUser ? 'bg-foreground' : 'bg-muted'
+          isUser ? 'bg-foreground' : 'bg-white'
         )}
       >
         {isUser ? (
           <User className="w-4 h-4 text-background" />
         ) : (
-          <Bot className="w-4 h-4 text-foreground" />
+          <img src="/chat-icon.png" alt="Bot" className="w-6 h-6 object-contain" />
         )}
       </div>
 
@@ -57,10 +57,13 @@ export function ChatMessage({ message }: ChatMessageProps) {
               <ReactMarkdown>{message.content}</ReactMarkdown>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 py-1 px-1">
-              <span className="w-2 h-2 bg-foreground/70 rounded-full loading-dot" />
-              <span className="w-2 h-2 bg-foreground/70 rounded-full loading-dot" />
-              <span className="w-2 h-2 bg-foreground/70 rounded-full loading-dot" />
+            <div className="flex flex-col items-start gap-1 py-1 px-1">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 bg-foreground/70 rounded-full loading-dot" />
+                <span className="w-2 h-2 bg-foreground/70 rounded-full loading-dot" />
+                <span className="w-2 h-2 bg-foreground/70 rounded-full loading-dot" />
+              </div>
+              <span className="text-xs text-muted-foreground">Chattie is thinking...</span>
             </div>
           )}
         </div>
