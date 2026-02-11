@@ -1,139 +1,135 @@
- Full RAG Pipeline
+# Chattie
 
-  ┌─────────────────────────────────────────────────────────────┐
-  │                    INGESTION PIPELINE                       │
-  │                                                             │
-  │  Upload (POST /documents)                                   │
-  │    │                                                        │
-  │    ▼                                                        │
-  │  DocumentProcessor                                          │
-  │    │  parse file (PDF, TXT, etc.)                           │
-  │    ▼                                                        │
-  │  Chunker (recursive, 512 tokens, 50 overlap)                │
-  │    │  split into chunks                                     │
-  │    ▼                                                        │
-  │  EmbeddingGenerator (text-embedding-3-small, 1536d)         │
-  │    │  embed each chunk                                      │
-  │    ▼                                                        │
-  │  QdrantStore                    BM25Search                  │
-  │    │  store vectors + metadata    │  index chunks in memory │
-  │    ▼                              ▼                         │
-  │  [Qdrant DB]                  [BM25 Index]                  │
-  └─────────────────────────────────────────────────────────────┘
+Chattie is an AI chat assistant that answers questions based on your own documents. Upload files (PDF, Word, TXT, etc.), and Chattie will read, understand, and use them to give you accurate answers.
 
-  ┌─────────────────────────────────────────────────────────────┐
-  │                     QUERY PIPELINE                          │
-  │                                                             │
-  │  User Query (POST /query)                                   │
-  │    │                                                        │
-  │    ▼                                                        │
-  │  ┌──────────────────────┐                                   │
-  │  │  QueryClassifier     │  rule-based, <1ms, $0             │
-  │  │  (4 routes)          │                                   │
-  │  └──────┬───────────────┘                                   │
-  │         │                                                   │
-  │    ┌────┼──────────┬──────────────┐                         │
-  │    ▼    ▼          ▼              ▼                          │
-  │  REJECT CLARIFY  GENERATION   RETRIEVAL                     │
-  │    │      │        │              │                          │
-  │    ▼      ▼        │              │                         │
-  │  static  static    │              │                         │
-  │  reply   reply     ▼              ▼                         │
-  │  (done)  (done)    ┌───────────────────────┐                │
-  │                    │  SemanticCache        │                │
-  │                    │  Layer 1: exact hash  │                │
-  │                    │  Layer 2: embedding   │                │
-  │                    │  similarity ≥ 0.9     │                │
-  │                    │  Layer 3: cross-      │                │
-  │                    │  encoder validate     │                 │
-  │                    └─────────┬───────────┬─┘                 │
-  │                    │     HIT │       MISS│                   │
-  │                    │         ▼           │                   │
-  │                    │    return cached    │                   │
-  │                    │    response (done)  │                   │
-  │                    │                     │                   │
-  │                    │                     ▼                   │
-  │                    │         EmbeddingGenerator              │
-  │                    │              │  embed query             │
-  │                    │              ▼                          │
-  │                    │         HybridSearch                    │
-  │                    │           ┌────┴────┐                   │
-  │                    │           ▼         ▼                   │
-  │                    │     VectorSearch  BM25Search            │
-  │                    │      (Qdrant)    (keyword)              │
-  │                    │           └────┬────┘                   │
-  │                    │                ▼                        │
-  │                    │         RRF Fusion + Recency Boost      │
-  │                    │              │  top-k chunks            │
-  │                    │              ▼                          │
-  │                    │         ContextBuilder                  │
-  │                    │              │  format chunks → context │
-  │                    │              ▼                          │
-  │                    │    ConversationMemory.get(session_id)   │
-  │                    │              │  prior messages          │
-  │                    │              ▼                          │
-  │                    ├───→  PromptManager.build()              │
-  │                    │       (query + context + history)       │
-  │                    │              │                          │
-  │                    │              ▼                          │
-  │                    │         LLMClient.generate_stream()     │
-  │                    │              │  SSE token-by-token      │
-  │                    │              ▼                          │
-  │                    │    ConversationMemory.add()             │
-  │                    │         (store user + assistant msgs)   │
-  │                    │              │                          │
-  │                    │              ▼                          │
-  │                    │    SemanticCache.set()                  │
-  │                    │         (cache query → response)        │
-  │                    │              │                          │
-  │                    │              ▼                          │
-  │                    └────→   SSE "done" event                 │
-  └─────────────────────────────────────────────────────────────┘
+## What can Chattie do?
 
-  Step-by-step breakdown
+- **Answer questions from your documents** — Upload a file and ask anything about its content.
+- **Remember your conversation** — Ask follow-up questions naturally.
+- **Work fast with caching** — Similar questions get instant answers.
+- **Handle multiple documents** — Upload as many files as you need.
 
-  Ingestion (POST /documents)
+## Supported file types
 
-  1. Upload — file saved to data/uploads/
-  2. Parse — DocumentProcessor extracts raw text from the file
-  3. Chunk — Chunker splits text using recursive strategy (512 tokens, 50 overlap)
-  4. Embed — EmbeddingGenerator calls OpenAI text-embedding-3-small → 1536-dim vectors
-  5. Store — vectors + metadata → QdrantStore; raw text → BM25Search in-memory index
+PDF, Word (.docx, .doc), Text (.txt), Markdown (.md), CSV, Excel (.xlsx), HTML
 
-  Query (POST /query)
+---
 
-  1. Classify — QueryClassifier (regex/keyword rules, no LLM) routes to one of 4 paths:
-    - REJECTION → static refusal, done
-    - CLARIFICATION → follow-up question, done
-    - GENERATION / RETRIEVAL → continue below
-  2. Cache check — SemanticCache.get(query):
-    - Layer 1: exact hash match (SHA-256 of normalized query)
-    - Layer 2: cosine similarity against cached embeddings (threshold ≥ 0.9)
-    - Layer 3: CrossEncoder (ms-marco-MiniLM-L-6-v2) validates the match (threshold ≥ 0.7)
-    - On hit → return cached response immediately, skip LLM
-  3. Embed query — EmbeddingGenerator.embed_query() → 1536-dim vector
-  4. Hybrid search — two parallel retrievals fused together:
-    - VectorSearch — cosine similarity against Qdrant (top 100)
-    - BM25Search — keyword/TF-IDF scoring (top 100)
-    - RRF fusion — Reciprocal Rank Fusion merges both ranked lists + recency boost → top-k results
-  5. Build context — ContextBuilder formats retrieved chunks into a single context string
-  6. Conversation history — ConversationMemory.get(session_id) retrieves prior messages for multi-turn context
-  7. Build prompts — PromptManager.build(query, context, history) → system prompt + user prompt
-  8. Stream LLM — LLMClient.generate_stream() calls OpenAI-compatible API, yields tokens via SSE
-  9. Store memory — ConversationMemory.add() saves both user query and assistant response for the session
-  10. Store cache — SemanticCache.set(query, response) caches the pair (hash + embedding) for future hits
+## How to run Chattie
 
-  Config-driven settings (from .env)
-  ┌───────────┬────────────────────────────────────────────────────────────────────────────────────┐
-  │ Component │                                    Key settings                                    │
-  ├───────────┼────────────────────────────────────────────────────────────────────────────────────┤
-  │ Embedding │ model, dimensions (1536), batch size                                               │
-  ├───────────┼────────────────────────────────────────────────────────────────────────────────────┤
-  │ Chunking  │ strategy (recursive), size (512), overlap (50)                                     │
-  ├───────────┼────────────────────────────────────────────────────────────────────────────────────┤
-  │ LLM       │ model (gpt-4o-mini), base_url, temperature, max_tokens                             │
-  ├───────────┼────────────────────────────────────────────────────────────────────────────────────┤
-  │ Cache     │ enabled, threshold (0.9), TTL (3600s), cross-encoder model, rerank threshold (0.7) │
-  ├───────────┼────────────────────────────────────────────────────────────────────────────────────┤
-  │ Qdrant    │ url, api_key, collection name                                                      │
-  └───────────┴────────────────────────────────────────────────────────────────────────────────────┘
+You have two options: **Docker (easiest)** or **manual setup**.
+
+---
+
+### Option 1: Using Docker (recommended)
+
+This is the easiest way — you don't need to install Python or Node.js separately.
+
+**Step 1: Install Docker**
+
+- Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- Open Docker Desktop and make sure it's running (you'll see a green icon in your taskbar)
+
+**Step 2: Set up your settings**
+
+- In the project folder, find the file called `.env.example`
+- Make a copy of it and rename the copy to `.env`
+- Open `.env` with any text editor (Notepad works fine)
+- Fill in your API keys:
+  ```
+  OPENAI_API_KEY=your-openai-key-here
+  QDRANT_URL=your-qdrant-url-here
+  QDRANT_API_KEY=your-qdrant-key-here
+  ```
+- Save and close the file
+
+**Step 3: Start Chattie**
+
+- Open a terminal (Command Prompt, PowerShell, or Terminal)
+- Navigate to the project folder:
+  ```
+  cd path\to\the\project\folder
+  ```
+- Run this command:
+  ```
+  docker compose up
+  ```
+- Wait until you see messages saying the services are ready (this may take a few minutes the first time)
+
+**Step 4: Open Chattie**
+
+- Open your browser and go to: **http://localhost:3000**
+- Click the chat bubble in the bottom-right corner
+- You're ready to go!
+
+**To stop Chattie:**
+- Press `Ctrl + C` in the terminal, or run:
+  ```
+  docker compose down
+  ```
+
+---
+
+### Option 2: Manual setup (without Docker)
+
+Use this if you prefer not to use Docker.
+
+**What you need to install first:**
+
+- [Python 3.11+](https://www.python.org/downloads/) — during installation, check "Add Python to PATH"
+- [Node.js 18+](https://nodejs.org/) — download the LTS version
+
+**Step 1: Set up your settings**
+
+Same as Docker Step 2 above — copy `.env.example` to `.env` and fill in your API keys.
+
+**Step 2: Start the backend**
+
+Open a terminal and run:
+```
+cd path\to\the\project\folder\backend
+pip install -r requirements.txt
+python api/main.py
+```
+
+You should see a message saying the server is running on `http://localhost:8000`. **Keep this terminal open.**
+
+**Step 3: Start the frontend**
+
+Open a **second** terminal and run:
+```
+cd path\to\the\project\folder\frontend
+npm install
+npm run dev
+```
+
+You should see a message with a local URL. **Keep this terminal open too.**
+
+**Step 4: Open Chattie**
+
+- Open your browser and go to: **http://localhost:3000**
+- Click the chat bubble in the bottom-right corner
+- You're ready to go!
+
+**To stop Chattie:**
+- Press `Ctrl + C` in both terminals.
+
+---
+
+## How to use Chattie
+
+1. Open **http://localhost:3000** in your browser
+2. Click the chat bubble in the bottom-right corner
+3. Upload a document at **http://localhost:8000/docs** (this opens an interactive API page — click on `/api/v1/documents/upload`, then "Try it out")
+4. Go back to the chat and start asking questions about your document
+
+---
+
+## Troubleshooting
+
+| Problem | Solution |
+|---|---|
+| "Cannot connect" or blank page | Make sure both backend and frontend are running |
+| Docker says "port already in use" | Another app is using port 3000 or 8000. Close it and try again |
+| "OPENAI_API_KEY not set" error | Make sure you created the `.env` file and added your key |
+| Upload fails | Check that your file is one of the supported types and under 50 MB |
