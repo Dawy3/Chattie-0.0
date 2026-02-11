@@ -46,14 +46,14 @@ export function ChatMessage({ message }: ChatMessageProps) {
           className={clsx(
             'px-4 py-3 rounded-2xl',
             isUser
-              ? 'bg-foreground text-background rounded-tr-md'
+              ? 'bg-white text-black rounded-tr-md'
               : 'bg-muted rounded-tl-md'
           )}
         >
           {isUser ? (
             <p className="text-sm whitespace-pre-wrap">{message.content}</p>
           ) : message.content ? (
-            <div className="prose prose-sm max-w-none dark:prose-invert">
+            <div className="prose prose-sm max-w-none dark:prose-invert text-sm">
               <ReactMarkdown>{message.content}</ReactMarkdown>
             </div>
           ) : (

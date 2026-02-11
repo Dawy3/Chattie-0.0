@@ -11,7 +11,7 @@ export function ChatBubble() {
     <>
       {/* Chat Panel */}
       {isOpen && (
-        <div className="fixed bottom-24 right-6 w-[420px] h-[600px] bg-background border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden z-50 animate-bubble-open">
+        <div className="fixed bottom-[12%] right-6 w-[420px] h-[720px] bg-background border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden z-50 animate-bubble-open">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
             <div className="flex items-center gap-2">

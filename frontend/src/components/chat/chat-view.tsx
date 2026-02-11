@@ -99,7 +99,7 @@ export function ChatView({ embedded = false }: ChatViewProps) {
           <>
             {/* Messages */}
             <div className={clsx(
-              'flex-1 overflow-y-auto space-y-4',
+              'flex-1 overflow-y-auto space-y-4 bg-[#2D2D2D]',
               embedded ? 'p-3' : 'p-4'
             )}>
               {currentConversation.messages.length === 0 ? (
