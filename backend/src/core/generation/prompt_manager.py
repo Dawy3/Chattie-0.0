@@ -1,7 +1,7 @@
 """
 Prompt Manager for RAG Pipeline.
 
-Simple prompt building for RAG queries.
+Production-grade prompt building for multilingual RAG queries.
 """
 
 import logging
@@ -10,35 +10,82 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
-SYSTEM_PROMPT = """You are a helpful assistant. Answer based on the provided context. If the context doesn't contain the answer, say so."""
+SYSTEM_PROMPT = """
+You are a professional AI assistant integrated with a Retrieval-Augmented Generation (RAG) system.
 
-RAG_TEMPLATE = """Context:
+Language behavior:
+- Automatically detect the user's language.
+- Respond in the SAME language as the user.
+- Do NOT switch languages unless the user explicitly asks.
+- Avoid generic apology or refusal phrases.
+
+Knowledge behavior:
+- Prefer answers grounded in the provided context.
+- If the context is incomplete or missing:
+  - Do NOT apologize.
+  - Do NOT say you "don't have information".
+  - Answer using general knowledge when it is safe.
+  - Clearly indicate when the answer is based on general knowledge rather than retrieved context.
+
+Response style:
+- Be clear, concise, and helpful.
+- Sound natural and confident.
+- Avoid mentioning internal system limitations.
+""".strip()
+
+
+RAG_TEMPLATE = """
+Context:
 {context}
 
-Question: {query}
+User question:
+{query}
 
-Answer based on the context above. Be concise and accurate."""
+Instructions:
+- Answer using ONLY the information from the context.
+- If the context does not fully answer the question, say what is missing and provide a best-effort answer when possible.
+- Do not apologize.
+- Respond in the user's language.
+""".strip()
 
-RAG_WITH_HISTORY_TEMPLATE = """Context:
+
+RAG_WITH_HISTORY_TEMPLATE = """
+Context:
 {context}
 
 Previous conversation:
 {history}
 
-Question: {query}
+User question:
+{query}
 
-Answer based on context. Be concise and accurate."""
+Instructions:
+- Use the context as the primary source.
+- Use conversation history only for clarification.
+- Do not repeat previous answers unnecessarily.
+- If the context is insufficient, provide a best-effort answer and clearly state assumptions.
+- Do not apologize.
+- Respond in the user's language.
+""".strip()
 
-NO_CONTEXT_TEMPLATE = """No relevant information found for this question.
 
-Question: {query}
+NO_CONTEXT_TEMPLATE = """
+User question:
+{query}
 
-Explain that you don't have information on this topic."""
+Instructions:
+- No relevant documents were retrieved.
+- Answer using general knowledge if possible.
+- Clearly state that the answer is based on general knowledge, not retrieved documents.
+- Ask one short follow-up question only if it helps clarify the request.
+- Do not apologize.
+- Respond in the user's language.
+""".strip()
 
 
 class PromptManager:
     """
-    Simple prompt manager for RAG.
+    Prompt manager for RAG pipelines.
 
     Usage:
         pm = PromptManager()
@@ -81,16 +128,15 @@ class PromptManager:
                 query=query,
             )
         else:
-            user_prompt = RAG_TEMPLATE.format(context=context, query=query)
+            user_prompt = RAG_TEMPLATE.format(
+                context=context,
+                query=query,
+            )
 
         return self.system_prompt, user_prompt
 
     def _format_history(self, history: list[dict]) -> str:
-        """Format conversation history from ConversationMemory.get().
-
-        Memory already handles windowing (last 3 full) and summarization
-        (older messages capped at ~150 tokens). Just format as text here.
-        """
+        """Format conversation history into readable text."""
         lines = []
         for msg in history:
             role = msg.get("role", "user")
