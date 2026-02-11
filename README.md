@@ -1,4 +1,5 @@
-# Chattie <img width="50" height="50" alt="Gemini_Generated_Image_5i3g0h5i3g0h5i3g" src="https://github.com/user-attachments/assets/d97a778d-c57f-4dd5-a216-64c896879681" />
+# Chattie <img width="50" height="50" alt="image" src="https://github.com/user-attachments/assets/5217cc63-698c-46c3-8fa4-391d264b2217" />
+
 
 
 
