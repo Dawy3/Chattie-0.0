@@ -1,4 +1,5 @@
-# Chattie
+# Chattie <img width="512" height="512" alt="robot" src="https://github.com/user-attachments/assets/da704aa4-86a0-48ca-b3f7-a2efc5c3a434" />
+
 
 Chattie is an AI chat assistant that answers questions based on your own documents. Upload files (PDF, Word, TXT, etc.), and Chattie will read, understand, and use them to give you accurate answers.
 
