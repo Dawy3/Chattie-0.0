@@ -126,7 +126,7 @@ export function ChatInput({ conversationId, suggestion, onSuggestionUsed }: Chat
             className="w-full resize-none rounded-xl border border-border bg-background px-4 py-3 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-foreground/20 disabled:opacity-50"
           />
           <button
-            onClick={handleSubmit}
+            onClick={() => handleSubmit()}
             disabled={!input.trim() || isStreaming}
             className="absolute right-2 bottom-2 p-2 rounded-lg bg-foreground text-background disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
           >
