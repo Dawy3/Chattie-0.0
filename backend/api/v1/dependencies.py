@@ -11,9 +11,7 @@ from src.core.retrieval.bm25_search import BM25Search
 from src.core.retrieval.hybrid_search import HybridSearch
 from src.core.generation.llm_client import LLMClient
 from src.core.generation.context_builder import ContextBuilder
-from src.core.generation.prompt_manager import PromptManager
 from src.core.query.classifier import QueryClassifier
-# from src.core.query.transformer import MultiQueryTransformer
 from src.core.chunking.strategies import Chunker
 from src.services.document_processor import DocumentProcessor
 from src.core.memory.conversation import ConversationMemory
@@ -44,16 +42,8 @@ def get_context_builder(request: Request) -> ContextBuilder:
     return request.app.state.context_builder
 
 
-def get_prompt_manager(request: Request) -> PromptManager:
-    return request.app.state.prompt_manager
-
-
 def get_query_classifier(request: Request) -> QueryClassifier:
     return request.app.state.query_classifier
-
-
-# def get_query_transformer(request: Request) -> MultiQueryTransformer:
-    # return request.app.state.query_transformer
 
 
 def get_chunker(request: Request) -> Chunker:

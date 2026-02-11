@@ -21,7 +21,6 @@ from src.core.retrieval.bm25_search import BM25Search
 from src.core.retrieval.hybrid_search import create_hybrid_search
 from src.core.generation.llm_client import create_llm_client
 from src.core.generation.context_builder import create_context_builder
-from src.core.generation.prompt_manager import PromptManager
 from src.core.query.classifier import create_classifier
 from src.core.chunking.strategies import get_chunker
 from src.services.document_processor import DocumentProcessor
@@ -102,9 +101,6 @@ async def lifespan(app: FastAPI):
     # --- Context Builder ---
     context_builder = create_context_builder()
 
-    # --- Prompt Manager ---
-    prompt_manager = PromptManager()
-
     # --- Query Classifier ---
     query_classifier = create_classifier()
 
@@ -134,9 +130,7 @@ async def lifespan(app: FastAPI):
     app.state.hybrid_search = hybrid_search
     app.state.llm_client = llm_client
     app.state.context_builder = context_builder
-    app.state.prompt_manager = prompt_manager
     app.state.query_classifier = query_classifier
-    # app.state.query_transformer = query_transformer
     app.state.chunker = chunker
     app.state.document_processor = document_processor
     app.state.conversation_memory = conversation_memory

@@ -5,12 +5,14 @@ import os
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, File
 
 from src.services.vector_store.qdrant import QdrantStore
 from src.core.embedding.generator import EmbeddingGenerator
 from src.core.retrieval.bm25_search import BM25Search
-from src.core.chunking.strategies import Chunker
+from src.core.chunking.strategies import Chunker, ChunkingStrategy, get_chunker as create_chunker
 from src.services.document_processor import DocumentProcessor
 
 from api.v1.schemas import (
@@ -65,10 +67,13 @@ async def _rebuild_bm25_index(
 @router.post("/upload", response_model=DocumentUploadResponse)
 async def upload_document(
     file: UploadFile = File(...),
+    strategy: Optional[str] = Form(None, description="Chunking strategy: fixed, recursive, semantic, sentence, document, page"),
+    chunk_size: Optional[int] = Form(None, ge=64, le=4096, description="Chunk size in tokens"),
+    chunk_overlap: Optional[int] = Form(None, ge=0, le=512, description="Chunk overlap in tokens"),
     qdrant_store: QdrantStore = Depends(get_qdrant_store),
     embedding_gen: EmbeddingGenerator = Depends(get_embedding_generator),
     bm25_search: BM25Search = Depends(get_bm25_search),
-    chunker: Chunker = Depends(get_chunker),
+    default_chunker: Chunker = Depends(get_chunker),
     doc_processor: DocumentProcessor = Depends(get_document_processor),
     upload_dir: str = Depends(get_upload_dir),
 ):
@@ -100,6 +105,12 @@ async def upload_document(
 
         # Process document
         processed = doc_processor.process(temp_path)
+
+        # Use custom chunker if any parameter is provided, otherwise use default
+        if strategy or chunk_size or chunk_overlap:
+            chunker = create_chunker(strategy=strategy, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        else:
+            chunker = default_chunker
 
         # Chunk
         chunks = chunker.chunk(
@@ -140,6 +151,9 @@ async def upload_document(
             document_id=document_id,
             filename=filename,
             chunks_count=len(chunks),
+            strategy=chunker.strategy.value,
+            chunk_size=chunker.chunk_size,
+            chunk_overlap=chunker.chunk_overlap,
         )
 
     finally:

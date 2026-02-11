@@ -189,3 +189,23 @@ class QueryClassifier:
             reason="Factual or knowledge-based query",
             detected_language=language,
         )
+        
+
+
+
+def create_classifier(
+    min_query_words: int = 2,
+) -> QueryClassifier:
+    """
+    Factory function to create a QueryClassifier.
+
+    Args:
+        min_query_words: Minimum number of words required
+                         before treating a query as non-vague.
+
+    Returns:
+        QueryClassifier instance
+    """
+    return QueryClassifier(
+        min_query_words=min_query_words,
+    )

@@ -12,7 +12,7 @@ from src.core.embedding.generator import EmbeddingGenerator
 from src.core.retrieval.hybrid_search import HybridSearch
 from src.core.generation.llm_client import LLMClient
 from src.core.generation.context_builder import ContextBuilder
-from src.core.generation.prompt_manager import PromptManager
+from src.core.generation.prompt_manager import build_prompt
 from src.core.query.classifier import QueryClassifier, QueryRoute
 from src.core.memory.conversation import ConversationMemory
 from src.core.caching.semantic_cache import SemanticCache
@@ -28,7 +28,6 @@ from api.v1.dependencies import (
     get_hybrid_search,
     get_llm_client,
     get_context_builder,
-    get_prompt_manager,
     get_query_classifier,
     get_conversation_memory,
     get_semantic_cache,
@@ -51,7 +50,6 @@ async def query(
     hybrid_search: HybridSearch = Depends(get_hybrid_search),
     llm_client: LLMClient = Depends(get_llm_client),
     context_builder: ContextBuilder = Depends(get_context_builder),
-    prompt_manager: PromptManager = Depends(get_prompt_manager),
     classifier: QueryClassifier = Depends(get_query_classifier),
     memory: ConversationMemory = Depends(get_conversation_memory),
     semantic_cache: SemanticCache | None = Depends(get_semantic_cache),
@@ -122,7 +120,7 @@ async def query(
     # ---- GENERATION route (LLM-only, no RAG) ----
 
     if route == QueryRoute.GENERATION:
-        system_prompt, user_prompt = prompt_manager.build(query=request.query, context="")
+        system_prompt, user_prompt = build_prompt(query=request.query, context="")
 
         async def generation_stream():
             collected = []
@@ -185,7 +183,7 @@ async def query(
         history = memory.get(session_id) or None
 
     # Build prompt
-    system_prompt, user_prompt = prompt_manager.build(
+    system_prompt, user_prompt = build_prompt(
         query=request.query,
         context=context.text,
         history=history,

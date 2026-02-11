@@ -38,6 +38,9 @@ class DocumentUploadResponse(BaseModel):
     document_id: str
     filename: str
     chunks_count: int
+    strategy: str = ""
+    chunk_size: int = 0
+    chunk_overlap: int = 0
     message: str = "Document uploaded and indexed successfully"
 
 
