@@ -19,14 +19,6 @@ PDF, Word (.docx, .doc), Text (.txt), Markdown (.md), CSV, Excel (.xlsx), HTML
 
 ## How to run Chattie
 
-You have two options: **Docker (easiest)** or **manual setup**.
-
----
-
-### Option 1: Using Docker (recommended)
-
-This is the easiest way — you don't need to install Python or Node.js separately.
-
 **Step 1: Install Docker**
 
 - Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
@@ -72,52 +64,6 @@ This is the easiest way — you don't need to install Python or Node.js separate
 
 ---
 
-### Option 2: Manual setup (without Docker)
-
-Use this if you prefer not to use Docker.
-
-**What you need to install first:**
-
-- [Python 3.11+](https://www.python.org/downloads/) — during installation, check "Add Python to PATH"
-- [Node.js 18+](https://nodejs.org/) — download the LTS version
-
-**Step 1: Set up your settings**
-
-Same as Docker Step 2 above — copy `.env.example` to `.env` and fill in your API keys.
-
-**Step 2: Start the backend**
-
-Open a terminal and run:
-```
-cd path\to\the\project\folder\backend
-pip install -r requirements.txt
-python api/main.py
-```
-
-You should see a message saying the server is running on `http://localhost:8000`. **Keep this terminal open.**
-
-**Step 3: Start the frontend**
-
-Open a **second** terminal and run:
-```
-cd path\to\the\project\folder\frontend
-npm install
-npm run dev
-```
-
-You should see a message with a local URL. **Keep this terminal open too.**
-
-**Step 4: Open Chattie**
-
-- Open your browser and go to: **http://localhost:3000**
-- Click the chat bubble in the bottom-right corner
-- You're ready to go!
-
-**To stop Chattie:**
-- Press `Ctrl + C` in both terminals.
-
----
-
 ## How to use Chattie
 
 1. Open **http://localhost:3000** in your browser
@@ -131,7 +77,7 @@ You should see a message with a local URL. **Keep this terminal open too.**
 
 | Problem | Solution |
 |---|---|
-| "Cannot connect" or blank page | Make sure both backend and frontend are running |
+| "Cannot connect" or blank page | Make sure Docker Desktop is running and you ran `docker compose up` |
 | Docker says "port already in use" | Another app is using port 3000 or 8000. Close it and try again |
 | "OPENAI_API_KEY not set" error | Make sure you created the `.env` file and added your key |
 | Upload fails | Check that your file is one of the supported types and under 50 MB |
