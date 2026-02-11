@@ -1,11 +1,9 @@
 """
-مصنف الاستعلامات للمشروع العربي - Rule-Based Query Classification for Arabic RAG Pipeline.
+Query Classifier for Multilingual RAG Pipeline (Arabic + English).
 
-تصنيف الاستعلامات:
-- RETRIEVAL: أسئلة واقعية يمكن الإجابة عليها من المستندات ← استخدام RAG
-- GENERATION: مهام إبداعية، تلخيص، تحليل، أو تحيات ← LLM فقط
-- CLARIFICATION: غامض ← طلب توضيح
-- REJECTION: خارج النطاق ← رفض بلطف
+Purpose:
+- Decide whether a query needs RAG, LLM-only, clarification, or rejection.
+- Rule-based for zero cost and ultra-low latency.
 
 Cost: $0 | Latency: <1ms
 """
@@ -20,20 +18,19 @@ logger = logging.getLogger(__name__)
 
 
 class QueryRoute(str, Enum):
-    """تصنيفات توجيه الاستعلامات."""
-    RETRIEVAL = "retrieval"
-    GENERATION = "generation"
+    RETRIEVAL = "retrieval"       # Needs RAG
+    GENERATION = "generation"     # LLM-only (creative, chat, explanation)
     CLARIFICATION = "clarification"
-    REJECTION = "rejection"
+    REJECTION = "rejection"       # Explicitly unsupported or unsafe
 
 
 @dataclass
 class ClassificationResult:
-    """نتيجة تصنيف الاستعلام."""
     query: str
     route: QueryRoute
     reason: str = ""
     follow_up_question: Optional[str] = None
+    detected_language: Optional[str] = None  # "ar" | "en"
 
     @property
     def needs_rag(self) -> bool:
@@ -46,169 +43,149 @@ class ClassificationResult:
 
 class QueryClassifier:
     """
-    مصنف استعلامات عربي قائم على القواعد.
+    Rule-based multilingual query classifier.
 
-    تصنيف سريع باستخدام الأنماط - بدون استدعاء LLM.
-    Cost: $0 | Latency: <1ms
+    Optimized for:
+    - RAG cost control
+    - Predictable routing
+    - Arabic & English support
     """
 
-    # أنماط التحيات والترحيب - يتم تمريرها إلى LLM للرد بترحيب
+    # -------------------------
+    # Language detection
+    # -------------------------
+    ARABIC_CHAR_PATTERN = re.compile(r"[\u0600-\u06FF]")
+
+    # -------------------------
+    # Greetings / small talk
+    # -------------------------
     GREETING_PATTERNS = [
-        r"^(مرحبا|مرحبا بك|مرحباً)$",
-        r"^(اهلا|أهلا|اهلاً|أهلاً).*$",
-        r"^(السلام عليكم|السلام).*$",
-        r"^(صباح الخير|مساء الخير|مساء النور|صباح النور)$",
-        r"^(هلا|هلا والله|يا هلا|حياك|حياك الله)$",
-        r"^(كيف حالك|كيف الحال|شلونك|شخبارك).*$",
-        r"^(hi|hello|hey|good morning|good evening)$",
+        r"^(مرحبا|مرحباً|اهلا|أهلا|السلام عليكم|صباح الخير|مساء الخير).*$",
+        r"^(hi|hello|hey|good morning|good evening|how are you).*$",
     ]
 
-    # أنماط التوليد (مهام إبداعية - لا تحتاج RAG)
+    # -------------------------
+    # Generation (no RAG)
+    # -------------------------
     GENERATION_PATTERNS = [
-        r"^(اكتب|أنشئ|ولد|صمم|حرر)\s",
-        r"^(لخص|اختصر)\s",
-        r"^(ترجم|حول)\s",
-        r"^(اشرح|وصف)\s.*(لي|ببساطة|كأن)",
+        # Arabic
+        r"^(اكتب|أنشئ|لخص|اختصر|ترجم|اشرح|صف|حلل)\s",
         r"(بكلماتك|بأسلوبك|ببساطة)$",
-        r"^(ما رأيك|أعطني رأيك)",
+        r"^(ما رأيك|اعطني رأيك)",
+        # English
+        r"^(write|summarize|translate|explain|describe|analyze)\s",
+        r"(in your own words|simply)$",
+        r"^(what do you think)",
     ]
 
-    # كلمات مرفوضة (خارج النطاق)
-    REJECTION_KEYWORDS = [
-        # ضار
-        "اختراق", "تهكير", "هاك", "فيروس", "سرقة", "تجسس",
-        "hack", "crack", "exploit", "malware", "virus",
-        # خارج الموضوع
-        "طقس", "أسهم", "رياضة", "مشاهير", "وصفة طبخ", "نكتة", "لعبة",
+    # -------------------------
+    # Explicitly unsafe / disallowed
+    # -------------------------
+    HARD_REJECTION_KEYWORDS = [
+        # Arabic
+        "اختراق", "تهكير", "تجسس", "سرقة",
+        # English
+        "hack", "crack", "exploit", "malware",
     ]
 
-    # استعلامات غامضة تحتاج توضيح
-    VAGUE_QUERIES = [
-        "مساعدة", "ساعدني", "أحتاج مساعدة",
-        "سؤال", "عندي سؤال",
-        "نعم", "لا", "أوكي", "حسنا", "طيب", "تمام",
-        "ماذا", "كيف", "لماذا", "ايش", "وش", "شنو",
+    # -------------------------
+    # Vague / low-signal queries
+    # -------------------------
+    VAGUE_PATTERNS = [
+        r"^(مساعدة|ساعدني|سؤال|عندي سؤال)$",
+        r"^(help|question)$",
+        r"^(نعم|لا|اوكي|تمام|ok|yes|no)$",
+        r"^(كيف|لماذا|ماذا)$",
     ]
 
     MIN_QUERY_WORDS = 2
 
-    def __init__(
-        self,
-        rejection_keywords: Optional[list[str]] = None,
-        generation_patterns: Optional[list[str]] = None,
-        min_query_words: int = 2,
-    ):
-        self.rejection_keywords = self.REJECTION_KEYWORDS.copy()
-        if rejection_keywords:
-            self.rejection_keywords.extend(rejection_keywords)
+    def __init__(self, min_query_words: int = 2):
+        self.min_query_words = min_query_words
 
         self.greeting_patterns = [
             re.compile(p, re.IGNORECASE) for p in self.GREETING_PATTERNS
         ]
-
         self.generation_patterns = [
             re.compile(p, re.IGNORECASE) for p in self.GENERATION_PATTERNS
         ]
-        if generation_patterns:
-            self.generation_patterns.extend([
-                re.compile(p, re.IGNORECASE) for p in generation_patterns
-            ])
+        self.vague_patterns = [
+            re.compile(p, re.IGNORECASE) for p in self.VAGUE_PATTERNS
+        ]
 
-        self.min_query_words = min_query_words
+    # -------------------------
+    # Helpers
+    # -------------------------
+    def _detect_language(self, query: str) -> str:
+        return "ar" if self.ARABIC_CHAR_PATTERN.search(query) else "en"
 
-    def _is_greeting(self, query: str) -> bool:
-        """تحقق مما إذا كان الاستعلام تحية أو ترحيب."""
-        for pattern in self.greeting_patterns:
-            if pattern.search(query):
-                return True
-        return False
+    def _matches_any(self, patterns, text: str) -> bool:
+        return any(p.search(text) for p in patterns)
 
+    # -------------------------
+    # Main classification
+    # -------------------------
     def classify(self, query: str) -> ClassificationResult:
-        """
-        تصنيف الاستعلام باستخدام القواعد.
-
-        Args:
-            query: استعلام المستخدم
-
-        Returns:
-            ClassificationResult مع المسار
-        """
         query = query.strip()
         query_lower = query.lower()
+        language = self._detect_language(query)
 
-        # استعلام فارغ
+        # Empty query
         if not query:
             return ClassificationResult(
                 query=query,
                 route=QueryRoute.CLARIFICATION,
-                reason="استعلام فارغ",
-                follow_up_question="مرحباً! كيف يمكنني مساعدتك اليوم؟",
+                reason="Empty query",
+                follow_up_question="كيف يمكنني مساعدتك؟" if language == "ar" else "How can I help you?",
+                detected_language=language,
             )
 
-        # التحيات والترحيب → يتم تمريرها إلى LLM للرد بترحيب
-        if self._is_greeting(query):
-            return ClassificationResult(
-                query=query,
-                route=QueryRoute.GENERATION,
-                reason="تحية أو ترحيب",
-            )
-
-        # التحقق من الرفض أولاً (ضار/خارج النطاق)
-        for keyword in self.rejection_keywords:
+        # Hard rejection (unsafe)
+        for keyword in self.HARD_REJECTION_KEYWORDS:
             if keyword in query_lower:
                 return ClassificationResult(
                     query=query,
                     route=QueryRoute.REJECTION,
-                    reason=f"يحتوي على كلمة خارج النطاق: {keyword}",
+                    reason=f"Unsafe keyword detected: {keyword}",
+                    detected_language=language,
                 )
 
-        # التحقق من التوضيح (غامض جداً)
-        words = query.split()
-        if len(words) < self.min_query_words:
+        # Greetings / chit-chat
+        if self._matches_any(self.greeting_patterns, query):
+            return ClassificationResult(
+                query=query,
+                route=QueryRoute.GENERATION,
+                reason="Greeting or small talk",
+                detected_language=language,
+            )
+
+        # Too short / vague
+        if len(query.split()) < self.min_query_words or self._matches_any(self.vague_patterns, query):
             return ClassificationResult(
                 query=query,
                 route=QueryRoute.CLARIFICATION,
-                reason="استعلام قصير جداً",
-                follow_up_question="هل يمكنك تقديم مزيد من التفاصيل حول ما تبحث عنه؟",
+                reason="Low information query",
+                follow_up_question=(
+                    "هل يمكنك توضيح سؤالك أكثر؟"
+                    if language == "ar"
+                    else "Could you please clarify your question?"
+                ),
+                detected_language=language,
             )
 
-        if query in self.VAGUE_QUERIES:
+        # Creative / generative
+        if self._matches_any(self.generation_patterns, query):
             return ClassificationResult(
                 query=query,
-                route=QueryRoute.CLARIFICATION,
-                reason="استعلام غامض",
-                follow_up_question="هل يمكنك أن تكون أكثر تحديداً حول ما تحتاج المساعدة فيه؟",
+                route=QueryRoute.GENERATION,
+                reason="Creative or explanatory task",
+                detected_language=language,
             )
 
-        # التحقق من التوليد (مهام إبداعية - لا تحتاج RAG)
-        for pattern in self.generation_patterns:
-            if pattern.search(query):
-                return ClassificationResult(
-                    query=query,
-                    route=QueryRoute.GENERATION,
-                    reason="مهمة إبداعية/توليدية",
-                )
-
-        # الافتراضي: استرجاع (استخدام RAG)
+        # Default → Retrieval
         return ClassificationResult(
             query=query,
             route=QueryRoute.RETRIEVAL,
-            reason="استعلام واقعي - استخدام RAG",
+            reason="Factual or knowledge-based query",
+            detected_language=language,
         )
-
-
-def create_classifier(
-    rejection_keywords: Optional[list[str]] = None,
-    min_query_words: int = 2,
-) -> QueryClassifier:
-    """
-    دالة إنشاء مصنف الاستعلامات.
-
-    Args:
-        rejection_keywords: كلمات إضافية للرفض
-        min_query_words: الحد الأدنى لكلمات الاستعلام الصالح
-    """
-    return QueryClassifier(
-        rejection_keywords=rejection_keywords,
-        min_query_words=min_query_words,
-    )
