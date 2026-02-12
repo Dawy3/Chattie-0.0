@@ -3,6 +3,7 @@
 
 
 
+
 Chattie is an AI chat assistant that answers questions based on your own documents. Upload files (PDF, Word, TXT, etc.), and Chattie will read, understand, and use them to give you accurate answers.
 
 ## What can Chattie do?
@@ -74,6 +75,12 @@ PDF, Word (.docx, .doc), Text (.txt), Markdown (.md), CSV, Excel (.xlsx), HTML
 
 ---
 
+## Technical Case Study
+
+Want to understand the engineering decisions behind Chattie? See the [Technical Case Study](CASE_STUDY.md) — covering streaming, chunking strategy, vector indexing, hybrid search, query classification, and caching.
+
+---
+
 ## Troubleshooting
 
 | Problem | Solution |
@@ -82,3 +89,4 @@ PDF, Word (.docx, .doc), Text (.txt), Markdown (.md), CSV, Excel (.xlsx), HTML
 | Docker says "port already in use" | Another app is using port 3000 or 8000. Close it and try again |
 | "OPENAI_API_KEY not set" error | Make sure you created the `.env` file and added your key |
 | Upload fails | Check that your file is one of the supported types and under 50 MB |
+
